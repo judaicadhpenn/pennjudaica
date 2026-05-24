@@ -1,0 +1,47 @@
+name: Scheduled OPenn Index Harvester
+
+on:
+  schedule:
+    # Runs at 02:00 UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allows you to click a button in the UI to force an immediate harvest
+
+permissions:
+  contents: write
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out Repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+        cache: 'pip'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install requests; fi
+
+    - name: Execute Harvester Script
+      run: python harvest.py
+
+    - name: Commit and Push Changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Check if data.js actually changed to prevent empty commits
+        if ! git diff --exit-code data.js; then
+          git add data.js
+          git commit -m "Auto-harvested updated data layer [skip ci]"
+          git push
+        else
+          echo "No structural changes found. data.js is already up to date."
+        fi
