@@ -1,3 +1,10 @@
+Web scraping can be notoriously finicky. The issue here is that OPenn’s index pages don't actually wrap their records in standard `<li>` (list item) tags like the previous script expected, causing the regex to silently skip everything and return zero results.
+
+To make the script bulletproof, we can change the parsing logic to chop the HTML into "chunks" based on *any* common closing tag (`</div>`, `</tr>`, `</p>`, `</li>`, or `<br>`). This way, no matter how OPenn formats their tables or lists, the script will catch the text.
+
+Replace your `harvest.py` with this updated version. It is designed to be completely structure-agnostic and should instantly pull all of your records:
+
+```python
 import json
 import re
 from datetime import datetime
@@ -28,17 +35,17 @@ def harvest_collection(coll_id, meta, global_id_start):
         print(f"  Error fetching {url}: {e}", flush=True)
         return items
 
-    # OPenn lists items in HTML <li> tags. We extract the raw HTML of all list items.
-    list_items = re.findall(r'<li[^>]*>(.*?)</li>', response.text, re.IGNORECASE | re.DOTALL)
+    # Chop the HTML into blocks based on common closing tags
+    chunks = re.split(r'</li>|</tr>|</div>|</p>|<br\s*/?>', response.text, flags=re.IGNORECASE)
     
     current_id = global_id_start
     
-    for raw_html in list_items:
-        # Strip all HTML tags to get pure text
-        text = re.sub(r'<[^>]+>', ' ', raw_html).strip()
+    for chunk in chunks:
+        # Strip all HTML tags to get pure text for analysis
+        text = re.sub(r'<[^>]+>', ' ', chunk).strip()
         text = re.sub(r'\s+', ' ', text) # Normalize spaces
         
-        # We only care about rows that contain standard OPenn record indicators
+        # We only care about chunks that contain standard OPenn record indicators
         if "Browse" not in text or ":" not in text:
             continue
             
@@ -47,6 +54,11 @@ def harvest_collection(coll_id, meta, global_id_start):
             continue
             
         callno = parts[0].strip()
+        
+        # Some records might not have standard formatting, skip if empty
+        if not callno:
+            continue
+            
         raw_desc = parts[1].split("Browse")[0].strip()
         
         # Extract the year
@@ -58,11 +70,15 @@ def harvest_collection(coll_id, meta, global_id_start):
         
         # Format a clean title
         title = raw_desc.split('.')[0] if '.' in raw_desc else raw_desc.split('(')[0].strip()
+        if not title:
+            title = f"Document ({callno})"
         
-        # Extract the first href link to build the source URL
-        link_match = re.search(r'href="([^"]+)"', raw_html, re.IGNORECASE)
-        item_dir_href = link_match.group(1) if link_match else ""
-        srcUrl = f"https://openn.library.upenn.edu/Data/{coll_id}/{item_dir_href}"
+        # Extract the specific href for the "Browse" link
+        link_match = re.search(r'href=["\']([^"\']+)["\'][^>]*>\s*Browse', chunk, re.IGNORECASE)
+        href = link_match.group(1) if link_match else ""
+        
+        # Ensure the URL is absolute
+        srcUrl = href if href.startswith("http") else f"{url.rstrip('/')}/{href.lstrip('/')}"
         
         item = {
             "id": current_id,
@@ -79,7 +95,7 @@ def harvest_collection(coll_id, meta, global_id_start):
             "collection": meta["label"],
             "source": meta["key"],
             "iiif": False, 
-            # Using a generic fallback thumbnail for fast loading
+            # Using a generic fallback thumbnail since the directory page doesn't expose image URLs
             "img": "https://openn.library.upenn.edu/Data/0001/ljs204/data/thumb/0015_0016_thumb.jpg", 
             "srcUrl": srcUrl,
             "callno": callno,
@@ -93,12 +109,11 @@ def harvest_collection(coll_id, meta, global_id_start):
     return items
 
 def main():
-    print("Starting fast HTML-based OPenn Harvest...", flush=True)
+    print("Starting robust HTML-based OPenn Harvest...", flush=True)
     
     all_items = []
     global_id = 1
     
-    # Loop through the 4 OPenn Collections
     for coll_id, meta in COLLECTIONS.items():
         col_items = harvest_collection(coll_id, meta, global_id)
         all_items.extend(col_items)
@@ -135,3 +150,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+```
