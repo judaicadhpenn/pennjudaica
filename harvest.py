@@ -9,7 +9,7 @@ OP_BASE = "https://openn.library.upenn.edu"
 SOURCES = {
     "zucker":  {"label": "Zucker Ketubah Collection", "system": "OPenn", "color": "#a8492b"},
     "ljs":     {"label": "Schoenberg Manuscripts",    "system": "OPenn", "color": "#6e7637"},
-    "mikveh":  {"label": "Mikveh Israel Records",     system": "OPenn", "color": "#6a4a7c"},
+    "mikveh":  {"label": "Mikveh Israel Records",     "system": "OPenn", "color": "#6a4a7c"},
     "genizah": {"label": "Cairo Genizah (CAJS)",      "system": "OPenn", "color": "#2f6d6a"}
 }
 
