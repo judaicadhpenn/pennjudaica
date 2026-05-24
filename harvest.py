@@ -1,11 +1,7 @@
 import json
 import re
-import sys
 from datetime import datetime
 import requests
-import concurrent.futures
-
-OP_BASE = "https://openn.library.upenn.edu"
 
 # OPenn Collection Directory IDs mapped to the Judaica Portal
 COLLECTIONS = {
@@ -17,153 +13,102 @@ COLLECTIONS = {
 
 def clean_year(date_str):
     """Extracts a 4-digit integer year for timeline sorting."""
-    if not date_str:
-        return 1700
-    match = re.search(r"\b(1[0-9]{3})\b", str(date_str))
+    match = re.search(r'\b(1[0-9]{3})\b', str(date_str))
     return int(match.group(1)) if match else 1700
 
-def get_value_from_iiif_metadata(metadata_list, target_key):
-    """Safely extracts a value from the IIIF manifest metadata array."""
-    for item in metadata_list:
-        label = item.get("label", "")
-        if isinstance(label, list): 
-            label = label[0]
-        if isinstance(label, dict):
-            label = label.get("@value", "")
-            
-        if label.lower() == target_key.lower():
-            val = item.get("value", "")
-            if isinstance(val, list):
-                val = val[0]
-            if isinstance(val, dict):
-                return val.get("@value", "")
-            return str(val)
-    return "Unknown"
-
-def process_item(item_id, coll_id, meta):
-    """Fetches and parses a single IIIF manifest."""
-    manifest_url = f"{OP_BASE}/Data/{coll_id}/{item_id}/data/manifest.json"
+def harvest_collection(coll_id, meta, global_id_start):
+    items = []
+    url = f"https://openn.library.upenn.edu/Data/{coll_id}/"
+    print(f"Fetching metadata from {url} ...", flush=True)
+    
     try:
-        m_res = requests.get(manifest_url, timeout=10)
-        if m_res.status_code != 200:
-            return None
-            
-        manifest = m_res.json()
-        metadata = manifest.get('metadata', [])
+        response = requests.get(url, timeout=20)
+        response.raise_for_status()
+    except Exception as e:
+        print(f"  Error fetching {url}: {e}", flush=True)
+        return items
+
+    # OPenn lists items in HTML <li> tags. We extract the raw HTML of all list items.
+    list_items = re.findall(r'<li[^>]*>(.*?)</li>', response.text, re.IGNORECASE | re.DOTALL)
+    
+    current_id = global_id_start
+    
+    for raw_html in list_items:
+        # Strip all HTML tags to get pure text
+        text = re.sub(r'<[^>]+>', ' ', raw_html).strip()
+        text = re.sub(r'\s+', ' ', text) # Normalize spaces
         
-        # Extract metadata
-        title = manifest.get('label', f"Item {item_id}")
-        desc = manifest.get('description', "")
-        date_text = get_value_from_iiif_metadata(metadata, "date")
-        callno = get_value_from_iiif_metadata(metadata, "call number")
-        if callno == "Unknown": callno = item_id
-        lang = get_value_from_iiif_metadata(metadata, "language")
-        place = get_value_from_iiif_metadata(metadata, "origin")
-
-        # Extract IIIF Canvases (Pages and Images)
-        pages = []
-        sequences = manifest.get('sequences', [])
-        if sequences:
-            canvases = sequences[0].get('canvases', [])
-            for c_idx, canvas in enumerate(canvases):
-                page_label = canvas.get('label', f"Page {c_idx+1}")
-                images = canvas.get('images', [])
-                if images:
-                    resource = images[0].get('resource', {})
-                    img_url = resource.get('@id', '')
-                    
-                    service = resource.get('service', {})
-                    if service and '@id' in service:
-                        base_id = service['@id']
-                        thumb_url = f"{base_id}/full/200,/0/default.jpg"
-                        web_url = f"{base_id}/full/800,/0/default.jpg"
-                    else:
-                        thumb_url = img_url
-                        web_url = img_url
-                    
-                    pages.append({
-                        "img": web_url,
-                        "thumb": thumb_url,
-                        "label": page_label
-                    })
-
-        if not pages:
-            return None
-
-        return {
-            "id": f"{coll_id}_{item_id}", # Temporary ID
+        # We only care about rows that contain standard OPenn record indicators
+        if "Browse" not in text or ":" not in text:
+            continue
+            
+        parts = text.split(":", 1)
+        if len(parts) < 2:
+            continue
+            
+        callno = parts[0].strip()
+        raw_desc = parts[1].split("Browse")[0].strip()
+        
+        # Extract the year
+        year = clean_year(raw_desc)
+        
+        # Extract the place (usually the first item in parentheses)
+        place_match = re.search(r'\(([^,)]+)', raw_desc)
+        place = place_match.group(1).strip() if place_match else "Unknown Place"
+        
+        # Format a clean title
+        title = raw_desc.split('.')[0] if '.' in raw_desc else raw_desc.split('(')[0].strip()
+        
+        # Extract the first href link to build the source URL
+        link_match = re.search(r'href="([^"]+)"', raw_html, re.IGNORECASE)
+        item_dir_href = link_match.group(1) if link_match else ""
+        srcUrl = f"https://openn.library.upenn.edu/Data/{coll_id}/{item_dir_href}"
+        
+        item = {
+            "id": current_id,
             "title": title,
-            "creator": get_value_from_iiif_metadata(metadata, "author"),
-            "year": clean_year(date_text),
-            "dateText": date_text if date_text != "Unknown" else "",
-            "place": place if place != "Unknown" else "",
+            "creator": "Unknown",
+            "year": year,
+            "dateText": raw_desc,
+            "place": place,
             "region": "Global",
             "lat": 0.0,
             "lng": 0.0,
-            "lang": lang if lang != "Unknown" else "",
-            "type": "Manuscript",
-            "collection": meta['label'],
-            "source": meta['key'],
-            "iiif": True,
-            "img": pages[0]["thumb"] if pages else "",
-            "srcUrl": f"{OP_BASE}/Data/{coll_id}/html/{item_id}.html",
+            "lang": "Hebrew",
+            "type": "Ketubah" if meta["key"] == "zucker" else "Manuscript",
+            "collection": meta["label"],
+            "source": meta["key"],
+            "iiif": False, 
+            # Using a generic fallback thumbnail for fast loading
+            "img": "https://openn.library.upenn.edu/Data/0001/ljs204/data/thumb/0015_0016_thumb.jpg", 
+            "srcUrl": srcUrl,
             "callno": callno,
-            "desc": desc,
-            "pages": pages
+            "desc": raw_desc,
+            "pages": []
         }
-    except Exception:
-        return None
-
-def harvest_collection(coll_id, meta):
-    items = []
-    print(f"\nScraping collection {coll_id}: {meta['label']}...", flush=True)
-    index_url = f"{OP_BASE}/Data/{coll_id}/"
-    
-    try:
-        response = requests.get(index_url, timeout=15)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"Failed to fetch {index_url}: {e}", flush=True)
-        return items
-
-    folders = re.findall(r'href="([a-zA-Z0-9_]+)/"', response.text)
-    
-    ignore_dirs = {'html', 'data', 'csv', 'css', 'js', 'fonts', 'images', 'tei', 'thumbnail', 'web', 'master', 'derivs'}
-    item_dirs = [f for f in folders if f.lower() not in ignore_dirs and not f.startswith('?')]
-    item_dirs = list(dict.fromkeys(item_dirs))
-
-    print(f"Found {len(item_dirs)} item folders. Fetching IIIF manifests in parallel...", flush=True)
-
-    # Use a ThreadPool to download manifests concurrently
-    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-        future_to_item = {executor.submit(process_item, item_id, coll_id, meta): item_id for item_id in item_dirs}
+        items.append(item)
+        current_id += 1
         
-        for future in concurrent.futures.as_completed(future_to_item):
-            result = future.result()
-            if result:
-                items.append(result)
-                # Print a dot for every successful item to show live progress
-                print(".", end="", flush=True)
-                
-    print(f"\nCompleted {len(items)} items for {meta['label']}.", flush=True)
+    print(f"  -> Extracted {len(items)} items for {meta['label']}", flush=True)
     return items
 
 def main():
-    print("Starting direct OPenn IIIF Harvest...", flush=True)
+    print("Starting fast HTML-based OPenn Harvest...", flush=True)
     
     all_items = []
+    global_id = 1
+    
+    # Loop through the 4 OPenn Collections
     for coll_id, meta in COLLECTIONS.items():
-        col_items = harvest_collection(coll_id, meta)
+        col_items = harvest_collection(coll_id, meta, global_id)
         all_items.extend(col_items)
+        global_id += len(col_items)
         
     if not all_items:
         print("No items found. Aborting.", flush=True)
         return
 
-    # App.js requires integer IDs
-    for idx, item in enumerate(all_items, start=1):
-        item["id"] = idx
-
+    # Auto-feature the first 4 items
     featured_ids = [it["id"] for it in all_items[:4]] if len(all_items) >= 4 else []
     sources = {meta["key"]: {"label": meta["label"], "system": meta["system"], "color": meta["color"]} for meta in COLLECTIONS.values()}
 
@@ -186,7 +131,7 @@ def main():
     with open("data.js", "w", encoding="utf-8") as f:
         f.write(output_content)
         
-    print(f"\nSuccessfully harvested {len(all_items)} total items and wrote them to data.js!", flush=True)
+    print(f"Successfully harvested {len(all_items)} total items and wrote them to data.js!", flush=True)
 
 if __name__ == "__main__":
     main()
