@@ -1,10 +1,3 @@
-Web scraping can be notoriously finicky. The issue here is that OPenn’s index pages don't actually wrap their records in standard `<li>` (list item) tags like the previous script expected, causing the regex to silently skip everything and return zero results.
-
-To make the script bulletproof, we can change the parsing logic to chop the HTML into "chunks" based on *any* common closing tag (`</div>`, `</tr>`, `</p>`, `</li>`, or `<br>`). This way, no matter how OPenn formats their tables or lists, the script will catch the text.
-
-Replace your `harvest.py` with this updated version. It is designed to be completely structure-agnostic and should instantly pull all of your records:
-
-```python
 import json
 import re
 from datetime import datetime
@@ -150,5 +143,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-```
