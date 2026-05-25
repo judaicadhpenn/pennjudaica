@@ -1,0 +1,73 @@
+name: Harvest OPenn -> data.js
+
+# Regenerates data.js from OPenn and commits it if anything changed.
+# Runs weekly, and on demand from the Actions tab (workflow_dispatch).
+on:
+  schedule:
+    - cron: "0 6 * * 1"        # every Monday 06:00 UTC
+  workflow_dispatch:            # manual "Run workflow" button
+    inputs:
+      limit:
+        description: "Optional cap on objects per collection (blank = all)"
+        required: false
+        default: ""
+
+# allow the job to push the regenerated data.js back to the repo
+permissions:
+  contents: write
+
+concurrency:
+  group: harvest
+  cancel-in-progress: false
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run harvester
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.limit }}" ]; then
+            ARGS="--limit ${{ github.event.inputs.limit }}"
+          fi
+          # harvest.py exits non-zero if it harvested 0 items, which fails the
+          # job instead of silently committing an empty index.
+          python3 harvest.py --out data.js $ARGS
+
+      - name: Sanity-check output
+        run: |
+          # data.js must define window.PJP and contain at least one item.
+          grep -q "window.PJP" data.js || { echo "::error::data.js missing window.PJP"; exit 1; }
+          COUNT=$(python3 - <<'PY'
+          import json, re
+          src = open("data.js", encoding="utf-8").read()
+          m = re.search(r"window\.PJP\s*=\s*(\{.*\});", src, re.S)
+          print(len(json.loads(m.group(1))["items"]))
+          PY
+          )
+          echo "Harvested $COUNT items."
+          [ "$COUNT" -ge 1 ] || { echo "::error::0 items harvested"; exit 1; }
+          echo "item_count=$COUNT" >> "$GITHUB_ENV"
+
+      - name: Commit data.js if it changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- data.js; then
+            echo "No changes to data.js."
+          else
+            git add data.js
+            git commit -m "Update data.js from OPenn ($item_count items) [skip ci]"
+            git push
+          fi
