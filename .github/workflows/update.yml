@@ -64,10 +64,33 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
           if git diff --quiet -- data.js; then
             echo "No changes to data.js."
-          else
-            git add data.js
-            git commit -m "Update data.js from OPenn ($item_count items) [skip ci]"
-            git push
+            exit 0
           fi
+          git add data.js
+          git commit -m "Update data.js from OPenn ($item_count items) [skip ci]"
+
+          # `main` can move between checkout and push (another run/commit). Rebase
+          # the freshly generated data.js onto the latest remote and retry, so the
+          # push always fast-forwards. data.js is generated, so "ours" wins cleanly.
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "Pushed on attempt $attempt."
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt) — syncing with latest main and retrying."
+            git fetch origin main
+            # keep our committed data.js staged, replay it on top of the new tip
+            git reset --soft origin/main
+            git add data.js
+            if git diff --cached --quiet; then
+              echo "Remote already has this data.js; nothing to push."
+              exit 0
+            fi
+            git commit -m "Update data.js from OPenn ($item_count items) [skip ci]"
+            sleep 3
+          done
+          echo "::error::Could not push data.js after several attempts."
+          exit 1
