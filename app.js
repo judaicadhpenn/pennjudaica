@@ -202,7 +202,7 @@
       iconCreateFunction: function (cluster) {
         var n = cluster.getAllChildMarkers().reduce(function (s, m) { return s + (m.options.count || 1); }, 0);
         var size = n < 10 ? 34 : n < 100 ? 42 : 50;
-        return L.divIcon({ html: '<div class="pjp-cluster">' + n + "</div>", className: "", iconSize: [size, size] });
+        return L.divIcon({ html: "<span>" + n + "</span>", className: "pjp-cluster", iconSize: [size, size] });
       }
     }) : L.layerGroup()).addTo(map);
   }
@@ -219,7 +219,7 @@
       var g = byCoord[k], n = g.items.length, size = n < 10 ? 30 : n < 100 ? 38 : 46;
       var marker = L.marker([g.lat, g.lng], {
         count: n,
-        icon: L.divIcon({ html: '<div class="pjp-dot">' + n + "</div>", className: "", iconSize: [size, size] })
+        icon: L.divIcon({ html: "<span>" + n + "</span>", className: "pjp-dot", iconSize: [size, size] })
       });
       var places = Object.keys(g.places).slice(0, 4).join(", ");
       var list = g.items.slice(0, 6).map(function (it) { return '<span class="pop-link" onclick="PJPapp.openItem(' + it.id + ')">› ' + esc(it.title) + "</span>"; }).join("");
