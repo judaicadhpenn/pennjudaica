@@ -236,3 +236,90 @@ header.masthead{background:var(--card);border-bottom:1px solid var(--line-strong
 footer{border-top:1px solid var(--line-strong);background:var(--card);padding:24px 28px;text-align:center;color:var(--muted);font-size:12px;line-height:1.7}
 footer b{color:var(--ink-soft)}
 footer a{color:var(--terra);text-decoration:none}
+
+/* ============================================================
+   Responsive / mobile
+   ============================================================ */
+
+/* tablets: tighten the masthead links a touch */
+@media (max-width:760px){
+  .mast-links{gap:13px;font-size:13px}
+  .mast-actions{gap:12px}
+}
+
+/* phones */
+@media (max-width:640px){
+  .concept-bar{font-size:11px;padding:6px 12px;line-height:1.45}
+
+  header.masthead{padding:12px 16px}
+  .mast-row{gap:10px}
+  .crest{width:30px;height:36px}
+  .mast-title h1{font-size:18px}
+  .mast-sub{font-size:11.5px}
+  .mast-links{display:none}            /* the tab bar below provides navigation */
+  .saved-btn{padding:6px 11px;font-size:12.5px}
+
+  .hero{padding:26px 16px 24px}
+  .hero .eyebrow{font-size:10.5px;margin-bottom:9px}
+  .hero h2{font-size:22px}
+  .hero p.lede{font-size:14px;margin-bottom:18px}
+  .searchbox{padding:4px 4px 4px 12px}
+  .searchbox input{font-size:16px;padding:11px 8px}    /* 16px keeps iOS from zooming */
+  .searchbox button.go{padding:11px 15px;font-size:13.5px}
+  .hero-meta{gap:10px;margin-top:11px}
+  .chips{gap:6px;margin-top:14px}
+  .chip{font-size:12px;padding:5px 10px}
+
+  /* tabs scroll sideways instead of wrapping */
+  .tabs{flex-wrap:nowrap;overflow-x:auto;padding:0 12px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;white-space:nowrap;padding:13px 12px;font-size:13px}
+
+  .wrap{padding:18px 14px 48px;gap:20px}
+
+  .results-head{flex-wrap:wrap;gap:8px}
+  .results-head .count{order:2}
+  .sortsel{width:100%;order:1}
+
+  .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+  .thumb{height:190px}
+  .card-body{padding:11px 12px 13px}
+  .card-body h3{font-size:14.5px}
+
+  #map{height:68vh;min-height:340px}
+
+  /* timeline: stack the era label above its items */
+  .timeline-wrap{padding:6px 14px}
+  .era-row{flex-direction:column;min-height:0;gap:10px}
+  .era-label{flex:none;border-right:0;border-left:3px solid var(--terra);padding:2px 0 2px 12px}
+  .era-items{flex:none;padding-left:0}
+  .tl-item{width:100px}
+
+  /* highlights feature card */
+  .feature .fbody{padding:20px 18px}
+  .feature .fbody h3{font-size:20px}
+
+  /* modals become full-screen sheets */
+  .modal-bg{padding:0;align-items:stretch}
+  .modal{border-radius:0;min-height:100vh}
+  .modal .viewer{min-height:46vh}
+  .modal .info{max-height:none;padding:20px 18px 28px}
+  .modal .info h2{font-size:20px}
+  .filmstrip img{height:46px}
+  .pagenav{top:8px;right:8px}
+  .meta-table td.k{width:100px}
+
+  .adv-modal{border-radius:0;min-height:100vh}
+  .adv-head{padding:16px 18px}
+  .adv-body{padding:18px}
+  .adv-foot{padding:14px 18px 20px}
+
+  footer{padding:20px 16px}
+}
+
+/* small phones: one card per row, larger preview */
+@media (max-width:380px){
+  .mast-title h1{font-size:16.5px}
+  .grid{grid-template-columns:1fr}
+  .thumb{height:230px}
+}
