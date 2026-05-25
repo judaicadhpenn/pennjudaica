@@ -71,14 +71,15 @@
     </div>
     <div class="hero-meta">
       <span class="adv-link"><a onclick="PJPapp.openAdv()">Advanced search</a></span>
-      <span class="scope-note">Indexing <b id="totalCount">0</b> records · <b>3</b> collections · <b>4</b> source systems</span>
+      <span class="scope-note">Indexing <b id="totalCount">0</b> records · <b>4</b> collections · <b>4</b> source systems</span>
     </div>
     <div class="chips">
+      <span class="chip" onclick="PJPapp.quick('Genizah')">Cairo Genizah</span>
       <span class="chip" onclick="PJPapp.quick('ketubah')">Ketubot</span>
       <span class="chip" onclick="PJPapp.quick('Italy')">Italian Jewry</span>
       <span class="chip" onclick="PJPapp.quick('India')">Indian communities</span>
       <span class="chip" onclick="PJPapp.quick('Mikveh Israel')">Early America</span>
-      <span class="chip" onclick="PJPapp.quick('Schoenberg')">Schoenberg manuscripts</span>
+      <span class="chip" onclick="PJPapp.quick('Maimonides')">Maimonides</span>
     </div>
   </div>
 </section>
@@ -127,7 +128,7 @@
 <!-- TIMELINE -->
 <div class="wrap" id="view-timeline" style="display:none;grid-template-columns:1fr">
   <main>
-    <div class="results-head"><div class="count">The collection across four centuries. Click any item to open its record.</div></div>
+    <div class="results-head"><div class="count">The collection across more than a millennium — from the early Cairo Genizah to the twentieth century. Click any item to open its record.</div></div>
     <div class="timeline-wrap" id="timeline"></div>
   </main>
 </div>
@@ -211,7 +212,7 @@
 
 <footer>
   <b>Penn Judaica Portal — Beta.</b> Visual scheme informed by the cover of <i>Milgroym</i> (Berlin, 1922).<br>
-  Records and images are real and openly licensed, served live from Penn's <a href="https://openn.library.upenn.edu/" target="_blank" rel="noopener">OPenn</a>: the Benjamin Zucker Family Ketubah Collection, the Lawrence J. Schoenberg Manuscripts, and the records of Congregation Mikveh Israel. The data layer (<code>data.js</code>) stands in for a server-side harvest of Penn's catalog, Colenda, OPenn &amp; finding aids. Design concept — not an official Penn Libraries service.
+  Records and images are real and openly licensed, served live from Penn's <a href="https://openn.library.upenn.edu/" target="_blank" rel="noopener">OPenn</a>: the Benjamin Zucker Family Ketubah Collection, the Lawrence J. Schoenberg Manuscripts, the Cairo Genizah Collection (CAJS / Halper), and the records of Congregation Mikveh Israel. The data layer (<code>data.js</code>) stands in for a server-side harvest of Penn's catalog, Colenda, OPenn &amp; finding aids. Design concept — not an official Penn Libraries service.
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
