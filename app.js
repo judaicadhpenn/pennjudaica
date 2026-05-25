@@ -20,12 +20,14 @@
   ];
   function emptyAdv() { return { key: "", title: "", creator: "", from: null, to: null, lang: "", type: "", source: "", region: "", iiif: false }; }
 
+  var PAGE_SIZE = 60;  // cards rendered per "page" in the results grid
   var state = {
     q: "", sort: "relevance",
     filters: { source: new Set(), type: new Set(), region: new Set(), lang: new Set() },
     adv: emptyAdv(),
     saved: new Set(),
-    view: "search"
+    view: "search",
+    page: 1
   };
   var map, markerLayer, osd, currentItemId = null, restoring = false;
   var viewerPages = [], viewerIndex = 0;
@@ -152,17 +154,30 @@
       '<div class="card-body"><div class="ctype"><span class="dot" style="background:' + s.color + '"></span><span>' + esc(it.type) + " · " + esc(s.label) + "</span></div>" +
       "<h3>" + esc(it.title) + '</h3><div class="meta">' + esc(it.dateText) + " · " + esc(it.lang) + "</div></div></div>";
   }
-  function render() {
+  function render(keepPage) {
+    if (!keepPage) state.page = 1;
     var res = sortItems(filtered());
     buildFacets(); renderActiveFilters(); refreshSavedUI();
-    $("shownCount").textContent = res.length; $("matchCount").textContent = res.length;
-    $("grid").innerHTML = res.length ? res.map(card).join("") :
-      '<div class="empty" style="grid-column:1/-1"><span class="big">⌕</span>No items match. Try removing a filter or searching a broader term.</div>';
+    renderGrid(res);
     if (state.view === "map") drawMap(res);
     if (state.view === "timeline") drawTimeline(res);
     if (state.view === "highlights") drawHighlights();
     if (state.view === "saved") drawSaved();
     writeHash();
+  }
+  function renderGrid(res) {
+    var total = res.length, shown = Math.min(total, state.page * PAGE_SIZE);
+    $("shownCount").textContent = shown; $("matchCount").textContent = total;
+    if (!total) {
+      $("grid").innerHTML = '<div class="empty" style="grid-column:1/-1"><span class="big">⌕</span>No items match. Try removing a filter or searching a broader term.</div>';
+      return;
+    }
+    var html = res.slice(0, shown).map(card).join("");
+    if (shown < total) {
+      var next = Math.min(PAGE_SIZE, total - shown);
+      html += '<div class="loadmore" style="grid-column:1/-1"><button class="btn ghost" onclick="PJPapp.loadMore()">Load ' + next + ' more · ' + (total - shown) + ' remaining</button></div>';
+    }
+    $("grid").innerHTML = html;
   }
   function drawSaved() {
     var items = ITEMS.filter(function (it) { return state.saved.has(it.id); });
@@ -179,40 +194,66 @@
   /* ---------------- map ---------------- */
   function ensureMap() {
     if (map) { setTimeout(function () { map.invalidateSize(); }, 60); return; }
-    map = L.map("map", { scrollWheelZoom: true }).setView([34, 30], 3);
+    map = L.map("map", { scrollWheelZoom: true }).setView([30, 24], 2);
     L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { attribution: "&copy; OpenStreetMap &copy; CARTO", maxZoom: 18, subdomains: "abcd" }).addTo(map);
-    markerLayer = L.layerGroup().addTo(map);
+    // markerCluster groups nearby points so we never plot ~1700 markers at once
+    markerLayer = (L.markerClusterGroup ? L.markerClusterGroup({
+      maxClusterRadius: 48, showCoverageOnHover: false, chunkedLoading: true,
+      iconCreateFunction: function (cluster) {
+        var n = cluster.getAllChildMarkers().reduce(function (s, m) { return s + (m.options.count || 1); }, 0);
+        var size = n < 10 ? 34 : n < 100 ? 42 : 50;
+        return L.divIcon({ html: '<div class="pjp-cluster">' + n + "</div>", className: "", iconSize: [size, size] });
+      }
+    }) : L.layerGroup()).addTo(map);
   }
   function drawMap(items) {
     if (!map) return; markerLayer.clearLayers();
-    var byPlace = {};
-    items.forEach(function (it) { (byPlace[it.place] = byPlace[it.place] || { lat: it.lat, lng: it.lng, place: it.place, items: [] }).items.push(it); });
-    Object.keys(byPlace).forEach(function (k) {
-      var g = byPlace[k], n = g.items.length, r = 7 + Math.min(n, 6) * 3;
-      var m = L.circleMarker([g.lat, g.lng], { radius: r, color: "#8a3a22", weight: 2, fillColor: "#a8492b", fillOpacity: .6 });
+    var byCoord = {};
+    items.forEach(function (it) {
+      if (typeof it.lat !== "number" || typeof it.lng !== "number") return; // skip un-geocoded
+      var key = it.lat.toFixed(2) + "," + it.lng.toFixed(2);
+      var g = byCoord[key] || (byCoord[key] = { lat: it.lat, lng: it.lng, places: {}, items: [] });
+      g.items.push(it); g.places[it.place] = 1;
+    });
+    Object.keys(byCoord).forEach(function (k) {
+      var g = byCoord[k], n = g.items.length, size = n < 10 ? 30 : n < 100 ? 38 : 46;
+      var marker = L.marker([g.lat, g.lng], {
+        count: n,
+        icon: L.divIcon({ html: '<div class="pjp-dot">' + n + "</div>", className: "", iconSize: [size, size] })
+      });
+      var places = Object.keys(g.places).slice(0, 4).join(", ");
       var list = g.items.slice(0, 6).map(function (it) { return '<span class="pop-link" onclick="PJPapp.openItem(' + it.id + ')">› ' + esc(it.title) + "</span>"; }).join("");
-      m.bindPopup('<div class="pop-title">' + esc(g.place) + '</div><div class="pop-meta">' + n + " item" + (n > 1 ? "s" : "") + "</div>" + list);
-      markerLayer.addLayer(m);
+      var more = g.items.length > 6 ? '<div class="pop-meta">+ ' + (g.items.length - 6) + " more</div>" : "";
+      marker.bindPopup('<div class="pop-title">' + esc(places) + '</div><div class="pop-meta">' + n + " item" + (n > 1 ? "s" : "") + "</div>" + list + more);
+      markerLayer.addLayer(marker);
     });
     setTimeout(function () { map.invalidateSize(); }, 60);
   }
 
   /* ---------------- timeline ---------------- */
   var ERAS = [
-    { from: 1400, to: 1599, yr: "1400s–1500s", nm: "Medieval & Renaissance manuscripts" },
+    { from: 1,    to: 1099, yr: "Before 1100", nm: "Earliest Cairo Genizah fragments" },
+    { from: 1100, to: 1299, yr: "1100s–1200s", nm: "The Genizah & the age of Maimonides" },
+    { from: 1300, to: 1499, yr: "1300s–1400s", nm: "Late medieval manuscripts" },
+    { from: 1500, to: 1599, yr: "1500s", nm: "Renaissance & the Ottoman world" },
     { from: 1600, to: 1699, yr: "1600s", nm: "Early modern Italy & the Ottoman world" },
     { from: 1700, to: 1799, yr: "1700s", nm: "Enlightenment & the early American republic" },
-    { from: 1800, to: 1899, yr: "1800s", nm: "A Jewish world spanning four continents" }
+    { from: 1800, to: 2100, yr: "1800s–1900s", nm: "A Jewish world spanning four continents" },
+    { from: 0,    to: 0,    yr: "Undated", nm: "Date not recorded in the source" }
   ];
   function drawTimeline(items) {
     var host = $("timeline"); host.innerHTML = "";
     ERAS.forEach(function (e) {
       var inEra = items.filter(function (it) { return it.year >= e.from && it.year <= e.to; }).sort(function (a, b) { return a.year - b.year; });
+      // never show an empty "Undated" scaffold row
+      if (e.to === 0 && !inEra.length) return;
       var row = document.createElement("div"); row.className = "era-row";
-      var chips = inEra.map(function (it) {
+      var ERA_CAP = 48;
+      var chips = inEra.slice(0, ERA_CAP).map(function (it) {
         var t = it.title.length > 40 ? it.title.slice(0, 38) + "…" : it.title;
         return '<div class="tl-item" onclick="PJPapp.openItem(' + it.id + ')"><div class="tlimg"><img loading="lazy" src="' + it.img + '" alt=""></div><div class="t">' + esc(t) + '</div><div class="d">' + esc(it.dateText) + "</div></div>";
       }).join("");
+      if (inEra.length > ERA_CAP) chips += '<div class="d" style="align-self:center;color:#8c8270;padding:0 6px">+ ' + (inEra.length - ERA_CAP) + ' more in this era — narrow your search to see them</div>';
       if (!inEra.length) chips = '<div class="d" style="color:#bcb39c;align-self:center">— no items in current results —</div>';
       row.innerHTML = '<div class="era-label"><div class="yr">' + e.yr + '</div><div class="nm">' + e.nm + '</div></div><div class="era-items">' + chips + "</div>";
       host.appendChild(row);
@@ -340,6 +381,7 @@
     quick: function (q) { $("q").value = q; this.doSearch(); },
     setView: function (v) { setView(v); render(); },
     setSort: function () { state.sort = $("sortSel").value; render(); },
+    loadMore: function () { state.page++; render(true); },
     toggleFacet: function (key, val, on) { if (on) state.filters[key].add(val); else state.filters[key].delete(val); render(); },
     removeFilter: function (key, val) { state.filters[key].delete(val); render(); },
     clearQuery: function () { state.q = ""; $("q").value = ""; render(); },
