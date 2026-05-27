@@ -183,11 +183,27 @@
   }
 
   /* ---------------- cards / render ---------------- */
+  // Inline-SVG placeholder for items with no thumbnail (finding aids).
+  // The background tint is the source color; the foreground is a small
+  // archive/folder mark in cream so it sits comfortably on any source palette.
+  function noImagePlaceholder(s) {
+    return '<div class="thumb thumb-empty" style="background:' + s.color + '">' +
+      '<svg viewBox="0 0 64 64" aria-hidden="true">' +
+        '<rect x="10" y="16" width="44" height="34" rx="3" fill="none" stroke="#f6e7d8" stroke-width="2.4"/>' +
+        '<path d="M10 22 L26 22 L30 18 L54 18" fill="none" stroke="#f6e7d8" stroke-width="2.4"/>' +
+        '<line x1="16" y1="30" x2="48" y2="30" stroke="#f6e7d8" stroke-width="1.6" opacity=".7"/>' +
+        '<line x1="16" y1="36" x2="42" y2="36" stroke="#f6e7d8" stroke-width="1.6" opacity=".7"/>' +
+        '<line x1="16" y1="42" x2="46" y2="42" stroke="#f6e7d8" stroke-width="1.6" opacity=".7"/>' +
+      '</svg></div>';
+  }
   function card(it) {
     var s = SOURCES[it.source], saved = state.saved.has(it.id);
-    return '<div class="card" onclick="PJPapp.openItem(' + it.id + ')">' +
-      '<div class="thumb"><img loading="lazy" src="' + it.img + '" alt="' + esc(it.title) + '">' +
-      '<button class="savemark ' + (saved ? "on" : "") + '" title="' + (saved ? "Saved" : "Save") + '" onclick="PJPapp.toggleSave(' + it.id + ',event)">' + (saved ? "♥" : "♡") + "</button></div>" +
+    var thumb = it.img
+      ? '<div class="thumb"><img loading="lazy" src="' + esc(it.img) + '" alt="' + esc(it.title) + '">' +
+        '<button class="savemark ' + (saved ? "on" : "") + '" title="' + (saved ? "Saved" : "Save") + '" onclick="PJPapp.toggleSave(' + it.id + ',event)">' + (saved ? "♥" : "♡") + '</button></div>'
+      : noImagePlaceholder(s).replace('</div>',
+          '<button class="savemark ' + (saved ? "on" : "") + '" title="' + (saved ? "Saved" : "Save") + '" onclick="PJPapp.toggleSave(' + it.id + ',event)">' + (saved ? "♥" : "♡") + '</button></div>');
+    return '<div class="card" onclick="PJPapp.openItem(' + it.id + ')">' + thumb +
       '<div class="card-body"><div class="ctype"><span class="dot" style="background:' + s.color + '"></span><span>' + esc(it.type) + " · " + esc(s.label) + "</span></div>" +
       "<h3>" + esc(it.title) + '</h3><div class="meta">' + esc(it.dateText) + " · " + esc(it.lang) + "</div></div></div>";
   }
@@ -321,33 +337,105 @@
       .catch(function () { return []; });
     return pageCache[id];
   }
+  // Render a list of subject-heading strings as inline "chip" links that
+  // run a new search when clicked. Returns "" if the list is empty.
+  function chipBlock(label, vals) {
+    vals = (vals || []).filter(Boolean);
+    if (!vals.length) return "";
+    var chips = vals.map(function (v) {
+      return '<span class="hchip" onclick="PJPapp.quick(' + JSON.stringify(v) + ')">' + esc(v) + '</span>';
+    }).join("");
+    return '<div class="hgroup"><div class="hlabel">' + esc(label) + '</div><div class="hchips">' + chips + '</div></div>';
+  }
+  // Multi-paragraph narrative section. Splits on double-space (which is what
+  // section_block emits when collapsing multiple <p> tags) and produces real
+  // <p> tags so the modal scrolls cleanly.
+  function paragraphBlock(label, text) {
+    if (!text) return "";
+    var paras = String(text).split(/\s{2,}/).map(function (p) {
+      return p.trim();
+    }).filter(Boolean);
+    if (!paras.length) return "";
+    return '<section class="mfa-section"><h3>' + esc(label) + '</h3>' +
+      paras.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join("") + '</section>';
+  }
+
   function openItem2(id, fromHash) {
     var it = ITEMS.filter(function (x) { return x.id === id; })[0]; if (!it) return;
     currentItemId = id; var s = SOURCES[it.source];
+    var isFA = (it.system === "FindingAids") || (!it.img && !it.iiif);
+
+    // Toggle the modal layout: image-led for OPenn, text-led for finding aids.
+    $("modalBg").classList.toggle("finding-aid", isFA);
+
     $("mDot").style.background = s.color;
     $("mType").textContent = it.type;
     $("mTitle").textContent = it.title;
     $("mCreator").textContent = it.creator;
     $("mDesc").textContent = it.desc;
-    $("mMeta").innerHTML =
-      '<tr><td class="k">Date</td><td class="v">' + esc(it.dateText) + "</td></tr>" +
-      '<tr><td class="k">Place</td><td class="v">' + esc(it.place) + "</td></tr>" +
-      '<tr><td class="k">Language</td><td class="v">' + esc(it.lang) + "</td></tr>" +
-      '<tr><td class="k">Format</td><td class="v">' + esc(it.type) + "</td></tr>" +
-      '<tr><td class="k">Collection</td><td class="v">' + esc(it.collection) + "</td></tr>" +
-      '<tr><td class="k">Call number</td><td class="v">' + esc(it.callno) + "</td></tr>";
-    $("mSrc").innerHTML = "Discovered via the unified index · Record &amp; images live in <b>" + esc(s.label) + "</b>";
+
+    if (isFA) {
+      // Build the finding-aid-specific body inside #mMeta. We reuse that
+      // host element so we don't have to change the HTML shell — but the
+      // content is rich text, not a metadata table.
+      var meta = "";
+      meta += '<table class="meta-table"><tbody>';
+      if (it.fa_repository) meta += '<tr><td class="k">Held at</td><td class="v">' + esc(it.fa_repository) + '</td></tr>';
+      meta += '<tr><td class="k">Dates</td><td class="v">' + esc(it.dateText) + '</td></tr>';
+      if (it.extent)   meta += '<tr><td class="k">Extent</td><td class="v">' + esc(it.extent) + '</td></tr>';
+      meta += '<tr><td class="k">Language</td><td class="v">' + esc(it.lang) + '</td></tr>';
+      if (it.type)     meta += '<tr><td class="k">Form</td><td class="v">' + esc(it.type) + '</td></tr>';
+      meta += '<tr><td class="k">Call number</td><td class="v">' + esc(it.callno) + '</td></tr>';
+      meta += '</tbody></table>';
+      meta += paragraphBlock("Biography / History", it.biographyHistory);
+      meta += paragraphBlock("Scope and content", it.scopeContent);
+      meta += paragraphBlock("Related materials", it.relatedMaterials);
+      // Subject headings as chips — these double as one-click drill-down searches
+      var hh = chipBlock("People", it.people)
+             + chipBlock("Organizations", it.corpnames)
+             + chipBlock("Subjects", it.subjects)
+             + chipBlock("Places", it.places)
+             + chipBlock("Genres", it.genres);
+      if (hh) meta += '<section class="mfa-section"><h3>Name and subject headings</h3>' + hh + '</section>';
+      $("mMeta").innerHTML = meta;
+      $("mSrc").innerHTML = 'Held by <b>' + esc(it.fa_repository || s.label) + '</b> · Full finding aid on findingaids.library.upenn.edu';
+      $("mSrcLink").textContent = "↗ View the full finding aid";
+    } else {
+      $("mMeta").innerHTML =
+        '<table class="meta-table"><tbody>' +
+        '<tr><td class="k">Date</td><td class="v">' + esc(it.dateText) + "</td></tr>" +
+        '<tr><td class="k">Place</td><td class="v">' + esc(it.place) + "</td></tr>" +
+        '<tr><td class="k">Language</td><td class="v">' + esc(it.lang) + "</td></tr>" +
+        '<tr><td class="k">Format</td><td class="v">' + esc(it.type) + "</td></tr>" +
+        '<tr><td class="k">Collection</td><td class="v">' + esc(it.collection) + "</td></tr>" +
+        '<tr><td class="k">Call number</td><td class="v">' + esc(it.callno) + "</td></tr>" +
+        '</tbody></table>';
+      $("mSrc").innerHTML = "Discovered via the unified index · Record &amp; images live in <b>" + esc(s.label) + "</b>";
+      $("mSrcLink").textContent = "↗ View in source system";
+    }
     $("mSrcLink").href = it.srcUrl;
     syncModalSave();
     $("modalBg").classList.add("open");
     if (!fromHash) writeHash();
-    // Show the cover image immediately, then fetch the rest of the pages.
+
+    if (isFA) {
+      // No image viewer for finding aids — just clear any prior state.
+      viewerPages = [];
+      viewerIndex = 0;
+      if (osd) { try { osd.close(); } catch (e) {} }
+      $("vfallback").style.display = "none";
+      $("pageNav").style.display = "none";
+      $("filmstrip").classList.add("hide");
+      $("filmstrip").innerHTML = "";
+      return;
+    }
+    // OPenn item — show the cover image, then lazy-fetch the rest of the pages.
     viewerPages = it.img ? [{ img: it.img, thumb: it.img, label: "" }] : [];
     viewerIndex = 0;
     renderViewer();
     var requestedId = id;
     loadPages(id).then(function (pages) {
-      if (currentItemId !== requestedId) return;  // user moved on
+      if (currentItemId !== requestedId) return;
       if (pages && pages.length) {
         viewerPages = pages;
         viewerIndex = 0;

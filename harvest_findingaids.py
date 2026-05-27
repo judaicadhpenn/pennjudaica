@@ -242,6 +242,67 @@ def first_after(lines, label, max_skip=3):
     return ""
 
 
+# Headings that terminate a narrative section. Order matters only for clarity;
+# any of these stops the harvester's "keep grabbing paragraphs" loop.
+SECTION_BOUNDARIES = {
+    "biography/history", "biographical/historical note",
+    "scope and content", "scope and contents", "scope content",
+    "arrangement", "related materials", "related material",
+    "name and subject headings", "subject headings", "administrative information",
+    "collection inventory", "controlled access headings",
+    "physical description", "language of materials",
+    "conditions governing access", "conditions governing use",
+    "preferred citation", "acquisition information",
+    "processing information", "appraisal", "accruals", "separated materials",
+    "custodial history", "immediate source of acquisition",
+    "print, suggest", "print the finding aid",
+}
+
+# Common page-furniture lines that pollute narrative sections. Drop these.
+SECTION_NOISE = {
+    "toggle request", "add to requests", "request to view materials",
+    "request item to view", "**request to view materials**",
+}
+
+
+def section_block(lines, *labels, max_lines=80):
+    """Grab the paragraph(s) following a heading whose text equals one of
+    `labels`, up to the next section heading or end of page. Returns the
+    joined paragraphs as one string, or "" if the section is missing."""
+    labset = {l.lower().rstrip(":") for l in labels}
+    out = []
+    grabbing = False
+    for ln in lines:
+        low = ln.lower().rstrip(":")
+        if low in labset:
+            grabbing = True
+            continue
+        if not grabbing:
+            continue
+        if low in SECTION_BOUNDARIES and low not in labset:
+            break
+        if low in SECTION_NOISE:
+            continue
+        # The collection inventory at the bottom of the page is fenced off by
+        # "Collection Inventory" in SECTION_BOUNDARIES, but some pages put a
+        # bare series title like "Walter H. Annenberg." right after Scope.
+        # If we see a one-word/short line ending in a period that looks like
+        # a series header, stop.
+        if (grabbing and len(out) > 2 and len(ln) < 60
+                and ln.endswith(".") and ln[0].isupper()
+                and ln.count(" ") < 5):
+            # heuristic: short capitalized line could be a series heading
+            # but only stop if the next several lines look like inventory
+            # items (containers). For safety, just stop.
+            break
+        out.append(ln)
+        if len(out) > max_lines:
+            break
+    text = " ".join(out).strip()
+    # collapse repeated whitespace
+    return re.sub(r"\s+", " ", text)
+
+
 def parse_year(date_text):
     if not date_text:
         return 0
@@ -314,6 +375,19 @@ def parse_record(rid):
                or "")
     publisher = first_after(lines, "Publisher")
 
+    # Multi-paragraph narrative sections — the parts that make a finding aid
+    # actually useful to a researcher. Truncated at 4000 chars each to keep
+    # individual records reasonable; the user can click through to the full
+    # finding aid for more.
+    biography = section_block(lines, "Biography/History",
+                              "Biographical/Historical note",
+                              "Biographical/Historical Note")[:4000]
+    scope = section_block(lines, "Scope and Content",
+                          "Scope and Contents",
+                          "Scope Content")[:4000]
+    related = section_block(lines, "Related Materials",
+                            "Related Material")[:2000]
+
     # Place: prefer the structured places facet; fall back to abstract scan.
     place = headings["places"][0] if headings["places"] else ""
     if not place and abstract:
@@ -331,6 +405,12 @@ def parse_record(rid):
     # digitization rate is low and the discovery + collection-level record
     # alone is the bulk of the value. Hybrid (component-level) mode is a
     # follow-up; the schema is ready for it (`pages`, `parentId`).
+    # `type` defaults to "Finding aid" but if the EAD declares a primary genre
+    # (Correspondence, Photographs, Manuscripts, Diaries…), use that instead so
+    # the format facet on the front end is actually useful.
+    primary_genre = headings["genres"][0] if headings["genres"] else ""
+    item_type = primary_genre or "Finding aid"
+
     return {
         "system": "FindingAids",
         "source": source,
@@ -343,7 +423,7 @@ def parse_record(rid):
         "place": place or "Unknown",
         "region": region, "lat": lat, "lng": lng,
         "lang": lang or "Unknown",
-        "type": "Finding aid",
+        "type": item_type,
         "iiif": False,
         "img": "",                          # no thumbnail at the collection level
         "srcUrl": url,
@@ -351,6 +431,9 @@ def parse_record(rid):
         "desc": abstract or "",
         "extent": extent or "",
         "publisher": publisher or "",
+        "biographyHistory": biography,      # multi-paragraph narrative
+        "scopeContent": scope,              # multi-paragraph narrative
+        "relatedMaterials": related,        # cross-references to other collections
         "people": headings["people"],
         "corpnames": headings["corpnames"],
         "subjects": headings["subjects"],

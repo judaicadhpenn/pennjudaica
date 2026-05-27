@@ -211,6 +211,27 @@ header.masthead{background:var(--card);border-bottom:1px solid var(--line-strong
 .ext-links a:hover{border-color:var(--terra);color:var(--terra)}
 .ext-links a.savetoggle.on{background:var(--terra);color:#fff;border-color:var(--terra)}
 
+/* ---- placeholder thumb (no-image items, e.g. finding aids) ---- */
+.thumb.thumb-empty{display:flex;align-items:center;justify-content:center;position:relative}
+.thumb.thumb-empty svg{width:54%;height:54%;opacity:.85}
+.thumb.thumb-empty::after{content:"Finding aid";position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#f6e7d8;opacity:.85;font-weight:600}
+
+/* ---- finding-aid modal layout: text-led, no image viewer ---- */
+.modal-bg.finding-aid .modal{grid-template-columns:1fr;max-width:820px}
+.modal-bg.finding-aid .modal .viewer{display:none}
+.modal-bg.finding-aid .modal .info{max-height:88vh}
+.mfa-section{margin-top:22px;border-top:1px solid var(--line);padding-top:18px}
+.mfa-section h3{font-family:"Garamond","EB Garamond",Georgia,serif;font-weight:600;font-size:17.5px;margin:0 0 10px;color:var(--ink)}
+.mfa-section p{font-size:14px;line-height:1.55;color:var(--ink-soft);margin:0 0 10px}
+.mfa-section p:last-child{margin-bottom:0}
+
+/* heading "chip" groups: People / Organizations / Subjects / Places / Genres */
+.hgroup{margin:8px 0 12px}
+.hlabel{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
+.hchips{display:flex;flex-wrap:wrap;gap:6px}
+.hchip{display:inline-block;font-size:12.5px;padding:4px 10px;background:#f3ecda;color:var(--ink);border-radius:14px;border:1px solid transparent;cursor:pointer;transition:border-color .15s,background .15s;line-height:1.35}
+.hchip:hover{border-color:var(--terra);background:#fff}
+
 /* advanced modal */
 .adv-modal{background:#fffdf8;border-radius:8px;max-width:680px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.45);overflow:hidden;position:relative}
 .adv-head{background:#f3ecda;border-bottom:1px solid var(--line-strong);padding:20px 26px}

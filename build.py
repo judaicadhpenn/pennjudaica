@@ -183,8 +183,10 @@ def build(raw_dir, out_path):
         "place", "region", "lat", "lng",
         "lang", "type", "iiif", "img",
         "srcUrl", "callno", "desc",
-        # finding-aid extras (small, useful for search ranking)
-        "people", "corpnames", "subjects", "places", "genres", "extent",
+        # finding-aid extras: short scalars + narrative sections + subject headings
+        "extent", "publisher",
+        "biographyHistory", "scopeContent", "relatedMaterials",
+        "people", "corpnames", "subjects", "places", "genres",
         "fa_id", "fa_repository",
         # cross-source provenance
         "alsoIn",
