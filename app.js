@@ -338,22 +338,25 @@
     return pageCache[id];
   }
   // Render a list of subject-heading strings as inline "chip" links that
-  // run a new search when clicked. Returns "" if the list is empty.
+  // run a new search when clicked. We HTML-escape the JSON literal so the
+  // string-quote chars become &quot; entities that survive being placed
+  // inside the double-quoted onclick attribute. Returns "" if list is empty.
   function chipBlock(label, vals) {
     vals = (vals || []).filter(Boolean);
     if (!vals.length) return "";
     var chips = vals.map(function (v) {
-      return '<span class="hchip" onclick="PJPapp.quick(' + JSON.stringify(v) + ')">' + esc(v) + '</span>';
+      var arg = esc(JSON.stringify(String(v)));
+      return '<span class="hchip" onclick="PJPapp.quick(' + arg + ')">' + esc(v) + '</span>';
     }).join("");
     return '<div class="hgroup"><div class="hlabel">' + esc(label) + '</div><div class="hchips">' + chips + '</div></div>';
   }
-  // Multi-paragraph narrative section. Splits on double-space (which is what
-  // section_block emits when collapsing multiple <p> tags) and produces real
-  // <p> tags so the modal scrolls cleanly.
+  // Multi-paragraph narrative section. The harvester emits paragraphs
+  // separated by a blank line; we split on any run of 2+ whitespace
+  // (including \n\n) so either shape works, and render each as a real <p>.
   function paragraphBlock(label, text) {
     if (!text) return "";
-    var paras = String(text).split(/\s{2,}/).map(function (p) {
-      return p.trim();
+    var paras = String(text).split(/\n\s*\n|\s{2,}/).map(function (p) {
+      return p.replace(/\s+/g, " ").trim();
     }).filter(Boolean);
     if (!paras.length) return "";
     return '<section class="mfa-section"><h3>' + esc(label) + '</h3>' +

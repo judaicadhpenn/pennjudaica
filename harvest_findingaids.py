@@ -298,9 +298,11 @@ def section_block(lines, *labels, max_lines=80):
         out.append(ln)
         if len(out) > max_lines:
             break
-    text = " ".join(out).strip()
-    # collapse repeated whitespace
-    return re.sub(r"\s+", " ", text)
+    # Preserve paragraph boundaries: each line in `out` is one EAD <p> (or
+    # equivalent block element). Join with a double newline so the front
+    # end's /\s{2,}/ paragraph splitter can find the boundaries.
+    paras = [re.sub(r"\s+", " ", ln).strip() for ln in out]
+    return "\n\n".join(p for p in paras if p).strip()
 
 
 def parse_year(date_text):

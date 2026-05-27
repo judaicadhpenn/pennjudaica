@@ -220,17 +220,22 @@ header.masthead{background:var(--card);border-bottom:1px solid var(--line-strong
 .modal-bg.finding-aid .modal{grid-template-columns:1fr;max-width:820px}
 .modal-bg.finding-aid .modal .viewer{display:none}
 .modal-bg.finding-aid .modal .info{max-height:88vh}
-.mfa-section{margin-top:22px;border-top:1px solid var(--line);padding-top:18px}
-.mfa-section h3{font-family:"Garamond","EB Garamond",Georgia,serif;font-weight:600;font-size:17.5px;margin:0 0 10px;color:var(--ink)}
-.mfa-section p{font-size:14px;line-height:1.55;color:var(--ink-soft);margin:0 0 10px}
+/* spacing for the finding-aid stack: header (h2/creator/desc), meta-table,
+   then optional narrative sections, then heading chips, then src-row */
+.modal-bg.finding-aid .modal .info > .meta-table{margin-bottom:4px}
+.mfa-section{margin-top:26px}
+.mfa-section + .mfa-section{margin-top:22px}
+.mfa-section h3{font-family:"Garamond","EB Garamond",Georgia,serif;font-weight:600;font-size:17px;letter-spacing:.01em;margin:0 0 10px;color:var(--terra);border-bottom:1px solid var(--line);padding-bottom:6px}
+.mfa-section p{font-size:14.5px;line-height:1.6;color:var(--ink-soft);margin:0 0 12px}
 .mfa-section p:last-child{margin-bottom:0}
 
 /* heading "chip" groups: People / Organizations / Subjects / Places / Genres */
-.hgroup{margin:8px 0 12px}
-.hlabel{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
+.hgroup{margin:0 0 14px}
+.hgroup:last-child{margin-bottom:0}
+.hlabel{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:8px}
 .hchips{display:flex;flex-wrap:wrap;gap:6px}
-.hchip{display:inline-block;font-size:12.5px;padding:4px 10px;background:#f3ecda;color:var(--ink);border-radius:14px;border:1px solid transparent;cursor:pointer;transition:border-color .15s,background .15s;line-height:1.35}
-.hchip:hover{border-color:var(--terra);background:#fff}
+.hchip{display:inline-block;font-size:12.5px;padding:5px 11px;background:#f3ecda;color:var(--ink);border-radius:14px;border:1px solid transparent;cursor:pointer;transition:border-color .15s,background .15s,color .15s;line-height:1.35;user-select:none}
+.hchip:hover{border-color:var(--terra);background:#fff;color:var(--terra)}
 
 /* advanced modal */
 .adv-modal{background:#fffdf8;border-radius:8px;max-width:680px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.45);overflow:hidden;position:relative}
