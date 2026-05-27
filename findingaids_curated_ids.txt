@@ -1,0 +1,10 @@
+# Curated finding-aid record IDs (one per line, # for comments).
+# Anything here is unioned into the discovery results regardless of
+# subject keyword / language / repository facets.
+#
+# Use this for collections that are clearly Judaica but don't surface via
+# the automatic passes — e.g. because the EAD didn't tag a "Jews" subject
+# heading or doesn't use a Hebrew/Yiddish language code.
+#
+# Example:
+#   UPENN_RBML_PUSP.MS.COLL.1618

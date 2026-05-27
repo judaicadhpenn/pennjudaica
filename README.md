@@ -26,14 +26,33 @@ Congregation Mikveh Israel.
 
 | file | role |
 |------|------|
-| `index.html` | markup + CDN includes (Leaflet, OpenSeadragon) |
+| `index.html` | markup + CDN includes (Leaflet, OpenSeadragon, MiniSearch) |
 | `styles.css` | all styling |
-| `app.js` | search, facets, views, viewer, URL state, saved items |
-| `data.js` | the **harvested index** — `window.PJP = { sources, items, featured }` |
-| `HARVESTING.md` | how to regenerate `data.js` from OAI-PMH + IIIF |
+| `app.js` | async data load, MiniSearch index, search/facets/views/viewer/URL state/saved items |
+| `items.json` | search + card-rendering fields (`{ sources, items, featured }`) |
+| `records/<id>.json` | per-item page-image arrays, **lazy-loaded** when a modal opens |
+| `harvest_openn.py` | OPenn harvester → `raw/openn.jsonl` (Judaica-scoped) |
+| `harvest_findingaids.py` | Finding Aids harvester → `raw/findingaids.jsonl` |
+| `build.py` | reads every `raw/*.jsonl`, dedupes, writes `items.json` + shards |
+| `findingaids_curated_ids.txt` | optional: one finding-aid ID per line, included regardless of facets |
+| `requirements.txt` | `requests` |
+| `netlify.toml` | static-publish config (no build step) |
+| `.github/workflows/harvest.yml` | weekly cron that harvests, builds, and commits |
+| `HARVESTING.md` | what the source systems expose and why we harvest them this way |
+| `SCALING.md` | the full architectural plan, the trade-offs, and the as-built layout |
 
-`data.js` is the only file that changes when the data changes; see
-`HARVESTING.md` for wiring it to a real OAI-PMH / IIIF harvest.
+To regenerate the data:
+
+```
+pip install -r requirements.txt
+python harvest_openn.py
+python harvest_findingaids.py
+python build.py
+```
+
+Add `--limit N` on either harvester for a quick smoke test. The front end
+loads `items.json` (~1 MB / 180 KB gzipped on the current dataset) and
+fetches `records/<id>.json` only when a user opens an item.
  
  
 ## License / credit

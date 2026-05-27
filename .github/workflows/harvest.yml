@@ -1,0 +1,49 @@
+name: harvest
+
+# Pulls OPenn + Finding Aids on a weekly cron, runs build.py, and commits
+# the refreshed items.json back to main. Netlify watches main and redeploys.
+#
+# Manually triggerable from the Actions tab via "Run workflow".
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"      # Mondays 05:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write             # so the bot can commit items.json back
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Harvest OPenn
+        run: python harvest_openn.py --out raw/openn.jsonl
+
+      - name: Harvest Finding Aids
+        run: python harvest_findingaids.py --out raw/findingaids.jsonl
+
+      - name: Build items.json
+        run: python build.py --raw raw --out items.json
+
+      - name: Commit refreshed items.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add items.json
+          if git diff --cached --quiet; then
+            echo "items.json unchanged — nothing to commit."
+          else
+            git commit -m "chore: weekly harvest $(date -u +%Y-%m-%d)"
+            git push
+          fi

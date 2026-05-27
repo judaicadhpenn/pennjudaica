@@ -1,0 +1,30 @@
+# Netlify configuration for the Penn Judaica Portal.
+#
+# The site is fully static. items.json is produced by GitHub Actions on a
+# weekly cron (see .github/workflows/harvest.yml) and committed to the repo;
+# Netlify just serves files. No build step needed.
+
+[build]
+  publish = "."
+  command = ""
+
+[build.environment]
+  # nothing — kept here as a deliberate marker that no build runs.
+
+# Cache items.json briefly (a few minutes) so Netlify can revalidate against
+# the latest harvest without forcing every visitor to re-download a multi-MB
+# file on every page load.
+[[headers]]
+  for = "/items.json"
+  [headers.values]
+    Cache-Control = "public, max-age=300, must-revalidate"
+
+# Aggressively cache the static shell — Netlify will bust on deploy anyway.
+[[headers]]
+  for = "/styles.css"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+[[headers]]
+  for = "/app.js"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"

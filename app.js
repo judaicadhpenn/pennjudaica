@@ -1,16 +1,21 @@
 /* ============================================================================
    Penn Judaica Portal — BETA · app.js
-   Reads window.PJP (from data.js). Features:
-   - unified search + live facets + advanced search
+   Loads items.json (produced by build.py) and indexes it with MiniSearch.
+   Features:
+   - unified search (MiniSearch, prefix + fuzzy, ranked by score)
+   - live facets + advanced search
    - map (Leaflet), timeline, highlights, saved
-   - deep-zoom item viewer (OpenSeadragon, single-image mode over OPenn)
+   - deep-zoom item viewer (OpenSeadragon, single-image mode)
    - URL hash state (shareable links) + persistent saved items (localStorage)
    ============================================================================ */
 (function () {
   "use strict";
-  var SOURCES = window.PJP.sources;
-  var ITEMS = window.PJP.items;
-  var FEATURED = window.PJP.featured;
+  // Populated by boot() once items.json is fetched.
+  var SOURCES = {};
+  var ITEMS = [];
+  var FEATURED = [];
+  var mini = null;          // MiniSearch instance — built once on boot
+  var dataReady = false;    // gate render passes until items.json has arrived
 
   var FACET_FIELDS = [
     { key: "source", label: "Collection", fmt: function (v) { return SOURCES[v].label; }, dot: function (v) { return SOURCES[v].color; } },
@@ -42,14 +47,25 @@
   function persistSaved() { if (!lsOK) return; try { localStorage.setItem(LS_KEY, JSON.stringify([].concat(Array.from(state.saved)))); } catch (e) {} }
 
   /* ---------------- filtering ---------------- */
-  function matchesQuery(it, q) {
+  // MiniSearch handles full-text ranking for the main query and the
+  // "Keywords (anywhere)" field in advanced search. Everything else is a
+  // plain field check on the candidate set.
+  function miniHits(q) {
+    if (!q || !mini) return null;
+    var hits = mini.search(q, {
+      prefix: true, fuzzy: 0.2,
+      boost: { title: 3, creator: 2, place: 1.5 }
+    });
+    return hits.map(function (h) { return h.id; });
+  }
+  function substringMatch(it, q) {
     if (!q) return true; q = q.toLowerCase();
     return [it.title, it.creator, it.desc, it.place, it.region, it.collection, it.lang, it.type, it.dateText, it.callno].join(" ").toLowerCase().indexOf(q) !== -1;
   }
   function passesFacets(it) { return FACET_FIELDS.every(function (f) { var s = state.filters[f.key]; return s.size === 0 || s.has(it[f.key]); }); }
   function passesAdv(it) {
     var a = state.adv;
-    if (a.key && !matchesQuery(it, a.key)) return false;
+    if (a.key && !substringMatch(it, a.key)) return false;  // also intersected with mini hits if state.q is set
     if (a.title && it.title.toLowerCase().indexOf(a.title.toLowerCase()) === -1) return false;
     if (a.creator && it.creator.toLowerCase().indexOf(a.creator.toLowerCase()) === -1) return false;
     if (a.from != null && it.year < a.from) return false;
@@ -61,9 +77,23 @@
     if (a.iiif && !it.iiif) return false;
     return true;
   }
-  function filtered() { return ITEMS.filter(function (it) { return matchesQuery(it, state.q) && passesFacets(it) && passesAdv(it); }); }
+  function filtered() {
+    if (!dataReady) return [];
+    var pool;
+    var ids = miniHits(state.q);
+    if (ids) {
+      // MiniSearch returned ranked ids; preserve that order through filtering
+      var byId = new Map(ITEMS.map(function (it) { return [it.id, it]; }));
+      pool = ids.map(function (id) { return byId.get(id); }).filter(Boolean);
+    } else {
+      pool = ITEMS;
+    }
+    return pool.filter(function (it) { return passesFacets(it) && passesAdv(it); });
+  }
   function sortItems(arr) {
     var s = state.sort, a = arr.slice();
+    // "relevance" = whatever order pool arrived in.
+    // With a query that's MiniSearch's ranking; without one, it's ITEMS order.
     if (s === "oldest") a.sort(function (x, y) { return x.year - y.year; });
     else if (s === "newest") a.sort(function (x, y) { return y.year - x.year; });
     else if (s === "title") a.sort(function (x, y) { return x.title.localeCompare(y.title); });
@@ -106,11 +136,18 @@
   }
 
   /* ---------------- facets ---------------- */
+  // Facet counts reflect "what other facet values would still be available
+  // if the user picked one in this group?" — so each group is computed
+  // against the candidate set with that group's filter relaxed.
   function buildFacets() {
     var host = $("facetGroups"); host.innerHTML = "";
+    // Apply MiniSearch / no-query exactly once for all facet groups.
+    var ids = miniHits(state.q);
+    var byId = ids ? new Map(ITEMS.map(function (it) { return [it.id, it]; })) : null;
+    var candidates = ids ? ids.map(function (id) { return byId.get(id); }).filter(Boolean) : ITEMS;
+    candidates = candidates.filter(function (it) { return passesAdv(it); });
     FACET_FIELDS.forEach(function (f) {
-      var pool = ITEMS.filter(function (it) {
-        if (!matchesQuery(it, state.q) || !passesAdv(it)) return false;
+      var pool = candidates.filter(function (it) {
         return FACET_FIELDS.every(function (g) { return g.key === f.key ? true : (state.filters[g.key].size === 0 || state.filters[g.key].has(it[g.key])); });
       });
       var counts = {}; pool.forEach(function (it) { counts[it[f.key]] = (counts[it[f.key]] || 0) + 1; });
@@ -272,6 +309,18 @@
   }
 
   /* ---------------- item viewer + deep zoom ---------------- */
+  // Per-item page shards (the multi-page filmstrip data) are lazy-loaded
+  // on first open. items.json carries only the search/card fields, so the
+  // initial page payload stays small.
+  var pageCache = Object.create(null);   // id -> Promise<pages[]>
+  function loadPages(id) {
+    if (pageCache[id]) return pageCache[id];
+    pageCache[id] = fetch("records/" + id + ".json", { cache: "default" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (rec) { return (rec && rec.pages) || []; })
+      .catch(function () { return []; });
+    return pageCache[id];
+  }
   function openItem2(id, fromHash) {
     var it = ITEMS.filter(function (x) { return x.id === id; })[0]; if (!it) return;
     currentItemId = id; var s = SOURCES[it.source];
@@ -287,14 +336,24 @@
       '<tr><td class="k">Format</td><td class="v">' + esc(it.type) + "</td></tr>" +
       '<tr><td class="k">Collection</td><td class="v">' + esc(it.collection) + "</td></tr>" +
       '<tr><td class="k">Call number</td><td class="v">' + esc(it.callno) + "</td></tr>";
-    $("mSrc").innerHTML = "Discovered via the unified index · Record &amp; images live in <b>" + esc(s.label) + "</b>, served openly from Penn’s OPenn";
+    $("mSrc").innerHTML = "Discovered via the unified index · Record &amp; images live in <b>" + esc(s.label) + "</b>";
     $("mSrcLink").href = it.srcUrl;
     syncModalSave();
-    viewerPages = (it.pages && it.pages.length) ? it.pages : [{ img: it.img, thumb: it.img, label: "" }];
-    viewerIndex = 0;
-    renderViewer();
     $("modalBg").classList.add("open");
     if (!fromHash) writeHash();
+    // Show the cover image immediately, then fetch the rest of the pages.
+    viewerPages = it.img ? [{ img: it.img, thumb: it.img, label: "" }] : [];
+    viewerIndex = 0;
+    renderViewer();
+    var requestedId = id;
+    loadPages(id).then(function (pages) {
+      if (currentItemId !== requestedId) return;  // user moved on
+      if (pages && pages.length) {
+        viewerPages = pages;
+        viewerIndex = 0;
+        renderViewer();
+      }
+    });
   }
   function renderViewer() {
     var pg = viewerPages[viewerIndex] || viewerPages[0];
@@ -426,10 +485,41 @@
   };
 
   /* ---------------- boot ---------------- */
-  function boot() {
-    $("totalCount").textContent = ITEMS.length;
-    initAdvOptions();
+  function buildMiniSearch() {
+    // MiniSearch is loaded from CDN as a UMD global.
+    if (typeof MiniSearch === "undefined") {
+      console.warn("MiniSearch not loaded — full-text search will fall back to substring match.");
+      mini = null;
+      return;
+    }
+    mini = new MiniSearch({
+      idField: "id",
+      fields: ["title", "creator", "desc", "place", "region", "collection",
+               "lang", "type", "dateText", "callno",
+               "people", "corpnames", "subjects", "places"],
+      storeFields: ["id"],
+      extractField: function (doc, fieldName) {
+        // Subject heading arrays (people/corpnames/subjects/places) flatten
+        // to a single string so MiniSearch indexes each word.
+        var v = doc[fieldName];
+        if (Array.isArray(v)) return v.join(" ");
+        return v == null ? "" : String(v);
+      },
+      searchOptions: { prefix: true, fuzzy: 0.2 }
+    });
+    mini.addAll(ITEMS);
+  }
+
+  function showLoading() {
+    $("grid").innerHTML = '<div class="empty" style="grid-column:1/-1"><span class="big">⌕</span>Loading the Judaica index…</div>';
+  }
+  function showLoadError(err) {
+    $("grid").innerHTML = '<div class="empty" style="grid-column:1/-1"><span class="big">⚠</span>Could not load items.json (' + (err && err.message ? err.message : err) + '). Try refreshing.</div>';
+  }
+
+  function bindDom() {
     loadSaved();
+    refreshSavedUI();
     $("q").addEventListener("keydown", function (e) { if (e.key === "Enter") window.PJPapp.doSearch(); });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") { closeModal(); window.PJPapp.closeAdv(); return; }
@@ -439,8 +529,29 @@
       }
     });
     window.addEventListener("hashchange", function () { if (!restoring) readHash(); });
-    if (location.hash) readHash(); else { setView("search", true); }
-    render();
+  }
+
+  function boot() {
+    bindDom();
+    showLoading();
+    fetch("items.json", { cache: "no-cache" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (payload) {
+        SOURCES = payload.sources || {};
+        ITEMS = payload.items || [];
+        FEATURED = payload.featured || [];
+        window.PJP = payload;  // back-compat: anything else on the page that expected window.PJP
+        $("totalCount").textContent = ITEMS.length;
+        buildMiniSearch();
+        initAdvOptions();   // populates the advanced-search dropdowns
+        dataReady = true;
+        if (location.hash) readHash(); else { setView("search", true); }
+        render();
+      })
+      .catch(function (err) {
+        console.error("items.json failed to load:", err);
+        showLoadError(err);
+      });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();
